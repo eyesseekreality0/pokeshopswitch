@@ -1,6 +1,8 @@
 import React from 'react';
-import { X, Plus, Minus, ShoppingBag, CreditCard } from 'lucide-react';
+import { X, Plus, Minus, ShoppingBag, CreditCard, ExternalLink } from 'lucide-react';
 import { CartItem } from '../types';
+import { useShopifyCart } from '../hooks/useShopify';
+import { shopifyService } from '../services/shopify';
 
 interface CartSidebarProps {
   isOpen: boolean;
@@ -19,8 +21,34 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
   onUpdateQuantity,
   onRemoveItem
 }) => {
-  const handleCheckout = () => {
-    alert('Redirecting to secure checkout! In a real implementation, this would integrate with your payment processor.');
+  const { cart, checkout, loading } = useShopifyCart();
+  const isShopifyConfigured = shopifyService.isConfigured();
+
+  const handleCheckout = async () => {
+    if (isShopifyConfigured && cart) {
+      // Use Shopify checkout
+      await checkout();
+    } else {
+      // Fallback to demo checkout
+      alert('Redirecting to secure checkout! In a real implementation, this would integrate with your payment processor.');
+    }
+  };
+
+  const getCheckoutButtonText = () => {
+    if (isShopifyConfigured) {
+      return (
+        <>
+          <ExternalLink className="w-5 h-5" />
+          SHOPIFY CHECKOUT
+        </>
+      );
+    }
+    return (
+      <>
+        <CreditCard className="w-5 h-5" />
+        SECURE CHECKOUT
+      </>
+    );
   };
 
   return (
@@ -58,6 +86,14 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
           <p className="comic-text mt-1 text-pokemon-yellow">
             {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'} in cart
           </p>
+
+          {/* Shopify Status */}
+          {isShopifyConfigured && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="comic-text text-xs text-green-400">Shopify Connected</span>
+            </div>
+          )}
         </div>
 
         {/* Cart Items */}
@@ -150,20 +186,51 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
               </span>
             </div>
 
+            {/* Shopify Cart Info */}
+            {isShopifyConfigured && cart && (
+              <div className="bg-gray-700 bg-opacity-80 rounded-lg p-3">
+                <div className="flex justify-between text-sm">
+                  <span className="comic-text text-gray-300">Shopify Total:</span>
+                  <span className="comic-text text-pokemon-yellow">
+                    ${cart.totalPrice.amount} {cart.totalPrice.currencyCode}
+                  </span>
+                </div>
+                {cart.totalTax.amount !== '0.00' && (
+                  <div className="flex justify-between text-sm">
+                    <span className="comic-text text-gray-300">Tax:</span>
+                    <span className="comic-text text-gray-300">
+                      ${cart.totalTax.amount}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Checkout Button */}
             <button
               onClick={handleCheckout}
+              disabled={loading}
               className="w-full bg-pokemon-yellow hover:bg-yellow-400 text-black 
                        font-bold py-4 px-6 rounded-full comic-border comic-text 
                        text-xl transform hover:scale-105 transition-all duration-300 
-                       comic-button comic-shadow flex items-center justify-center gap-2"
+                       comic-button comic-shadow flex items-center justify-center gap-2
+                       disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <CreditCard className="w-5 h-5" />
-              SECURE CHECKOUT
+              {loading ? (
+                <>
+                  <div className="animate-spin w-5 h-5 border-2 border-black border-t-transparent rounded-full"></div>
+                  PROCESSING...
+                </>
+              ) : (
+                getCheckoutButtonText()
+              )}
             </button>
 
             <p className="text-xs text-gray-400 text-center comic-text">
-              SSL Secured • Digital Delivery • Authentic Games
+              {isShopifyConfigured 
+                ? 'Secure Shopify Checkout • Real Payments • Instant Delivery'
+                : 'SSL Secured • Digital Delivery • Authentic Games'
+              }
             </p>
           </div>
         )}

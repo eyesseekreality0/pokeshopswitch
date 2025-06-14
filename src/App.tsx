@@ -5,15 +5,22 @@ import ProductGrid from './components/ProductGrid';
 import CartSidebar from './components/CartSidebar';
 import Footer from './components/Footer';
 import InfoPage from './components/InfoPage';
+import ShopifyIntegration from './components/ShopifyIntegration';
 import { useCart } from './hooks/useCart';
+import { useShopifyProducts } from './hooks/useShopify';
 import { products, debugImagePaths } from './data/products';
 import { debugProductImages } from './utils/imageUtils';
 import { Product } from './types';
+import { shopifyService } from './services/shopify';
 
 function App() {
   const cart = useCart();
   const [currentView, setCurrentView] = useState('home');
   const [currentInfoPage, setCurrentInfoPage] = useState<string | null>(null);
+  
+  // Shopify integration
+  const { products: shopifyProducts, loading: shopifyLoading, error: shopifyError } = useShopifyProducts();
+  const isShopifyConfigured = shopifyService.isConfigured();
 
   // Debug images in development
   useEffect(() => {
@@ -50,9 +57,32 @@ function App() {
     }
   }, [currentView]);
 
+  // Use Shopify products if available, otherwise fall back to local products
+  const activeProducts = useMemo(() => {
+    if (isShopifyConfigured && shopifyProducts.length > 0) {
+      // Transform Shopify products to our format
+      return shopifyProducts.map(shopifyProduct => ({
+        id: shopifyProduct.id,
+        name: shopifyProduct.title,
+        price: parseFloat(shopifyProduct.variants[0]?.price.amount || '0'),
+        image: shopifyProduct.images[0]?.src || '/placeholder-pokemon.jpg',
+        description: shopifyProduct.description,
+        console: 'Nintendo Switch',
+        generation: parseInt(shopifyProduct.tags.find(tag => tag.startsWith('gen-'))?.replace('gen-', '') || '8'),
+        releaseDate: shopifyProduct.createdAt,
+        category: shopifyProduct.tags.includes('new') ? 'new' as const : 'popular' as const,
+        inStock: shopifyProduct.variants[0]?.available || false,
+        rating: 4.5, // Default rating
+        features: shopifyProduct.tags.filter(tag => !tag.startsWith('gen-')),
+        priceCategory: `$${Math.floor(parseFloat(shopifyProduct.variants[0]?.price.amount || '0') / 10) * 10}-$${Math.floor(parseFloat(shopifyProduct.variants[0]?.price.amount || '0') / 10) * 10 + 10}`
+      }));
+    }
+    return products;
+  }, [isShopifyConfigured, shopifyProducts]);
+
   // Filter and sort products based on current view
   const filteredProducts = useMemo(() => {
-    let filtered = [...products];
+    let filtered = [...activeProducts];
 
     // Apply view-specific filtering
     switch (currentView) {
@@ -81,11 +111,11 @@ function App() {
 
     // Sort by price (lowest to highest)
     return filtered.sort((a, b) => a.price - b.price);
-  }, [currentView]);
+  }, [currentView, activeProducts]);
 
   // Organize all products by category, sorted by price
   const organizedProducts = useMemo(() => {
-    const allSorted = [...products].sort((a, b) => a.price - b.price);
+    const allSorted = [...activeProducts].sort((a, b) => a.price - b.price);
     
     return {
       all: allSorted,
@@ -96,7 +126,7 @@ function App() {
       gen8: allSorted.filter(p => p.generation === 8),
       gen9: allSorted.filter(p => p.generation === 9)
     };
-  }, []);
+  }, [activeProducts]);
 
   const handleNavigate = (category: string) => {
     setCurrentView(category);
@@ -138,23 +168,24 @@ function App() {
   };
 
   const getPageTitle = () => {
+    const source = isShopifyConfigured && shopifyProducts.length > 0 ? 'Shopify' : 'Local';
     switch (currentView) {
       case 'new':
-        return `NEW POKEMON GAMES (${filteredProducts.length} games)`;
+        return `NEW POKEMON GAMES (${filteredProducts.length} games) - ${source}`;
       case 'popular':
-        return `POPULAR POKEMON GAMES (${filteredProducts.length} games)`;
+        return `POPULAR POKEMON GAMES (${filteredProducts.length} games) - ${source}`;
       case 'gen4':
-        return `GENERATION 4 GAMES (${filteredProducts.length} games)`;
+        return `GENERATION 4 GAMES (${filteredProducts.length} games) - ${source}`;
       case 'gen7':
-        return `GENERATION 7 GAMES (${filteredProducts.length} games)`;
+        return `GENERATION 7 GAMES (${filteredProducts.length} games) - ${source}`;
       case 'gen8':
-        return `GENERATION 8 GAMES (${filteredProducts.length} games)`;
+        return `GENERATION 8 GAMES (${filteredProducts.length} games) - ${source}`;
       case 'gen9':
-        return `GENERATION 9 GAMES (${filteredProducts.length} games)`;
+        return `GENERATION 9 GAMES (${filteredProducts.length} games) - ${source}`;
       case 'all':
-        return `ALL POKEMON GAMES (${filteredProducts.length} games)`;
+        return `ALL POKEMON GAMES (${filteredProducts.length} games) - ${source}`;
       default:
-        return `ALL POKEMON GAMES (${products.length} games)`;
+        return `ALL POKEMON GAMES (${activeProducts.length} games) - ${source}`;
     }
   };
 
@@ -235,15 +266,45 @@ function App() {
 
       {/* Hero Section - Only show on home view */}
       {currentView === 'home' && (
-        <Hero 
-          onShopNow={handleShopNow}
-          onViewGames={handleViewGames}
-        />
+        <>
+          <Hero 
+            onShopNow={handleShopNow}
+            onViewGames={handleViewGames}
+          />
+          
+          {/* Shopify Integration Status */}
+          <div className="container mx-auto px-4 py-8 relative z-10">
+            <ShopifyIntegration />
+          </div>
+        </>
       )}
 
       {/* Main Content - Only show games when NOT on home page */}
       {currentView !== 'home' && (
         <main id="products-section" className="container mx-auto px-4 py-4 relative z-10">
+          {/* Shopify Loading State */}
+          {shopifyLoading && isShopifyConfigured && (
+            <div className="text-center py-8">
+              <div className="speech-bubble inline-block bg-opacity-90 backdrop-blur-sm">
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin w-6 h-6 border-2 border-pokemon-yellow border-t-transparent rounded-full"></div>
+                  <p className="comic-text text-lg text-white">Loading products from Shopify...</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Shopify Error State */}
+          {shopifyError && isShopifyConfigured && (
+            <div className="text-center py-8">
+              <div className="speech-bubble inline-block bg-opacity-90 backdrop-blur-sm">
+                <p className="comic-text text-lg text-red-400 font-bold mb-2">Shopify Error</p>
+                <p className="comic-text text-white">{shopifyError}</p>
+                <p className="comic-text text-gray-300 text-sm mt-2">Showing local products instead</p>
+              </div>
+            </div>
+          )}
+
           {/* Show single grid for "All Games" page, single category for filtered */}
           <ProductGrid
             products={currentView === 'all' ? organizedProducts.all : filteredProducts}
@@ -252,7 +313,7 @@ function App() {
           />
 
           {/* Show message if no products found */}
-          {currentView !== 'all' && filteredProducts.length === 0 && (
+          {currentView !== 'all' && filteredProducts.length === 0 && !shopifyLoading && (
             <div className="text-center py-16">
               <div className="speech-bubble inline-block epic-entrance bg-opacity-90 backdrop-blur-sm">
                 <h3 className="comic-font text-3xl text-pokemon-red mb-4">
