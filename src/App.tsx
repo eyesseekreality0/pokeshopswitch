@@ -157,7 +157,7 @@ function App() {
         <div 
           className="fixed inset-0 w-full h-full bg-cover bg-center bg-no-repeat animate-background-drift"
           style={{
-            backgroundImage: `url('/pokemon/background.png')`,
+            backgroundImage: `url('https://images.pexels.com/photos/1029604/pexels-photo-1029604.jpeg?auto=compress&cs=tinysrgb&w=1600')`,
             backgroundSize: '120%',
             animation: 'background-drift 30s ease-in-out infinite'
           }}
@@ -198,7 +198,7 @@ function App() {
       <div 
         className="fixed inset-0 w-full h-full bg-cover bg-center bg-no-repeat animate-background-drift"
         style={{
-          backgroundImage: `url('/pokemon/background.png')`,
+          backgroundImage: `url('https://images.pexels.com/photos/1029604/pexels-photo-1029604.jpeg?auto=compress&cs=tinysrgb&w=1600')`,
           backgroundSize: '120%',
           animation: 'background-drift 30s ease-in-out infinite'
         }}
