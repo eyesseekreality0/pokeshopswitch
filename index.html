@@ -13,7 +13,7 @@
     
     <!-- Speed Checkout SDK -->
     <script src="https://js.tryspeed.com/v1/speed.js" async></script>
-    <script>
+    <script type="module">
       window.speedConfig = {
         apiKey: import.meta.env?.VITE_SPEED_API_KEY || '',
         environment: 'production', // or 'sandbox' for testing
