@@ -70,13 +70,24 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         return;
       }
 
-      console.log('🚀 Starting Speed QR checkout process...');
+      // Validate total amount matches cart calculation
+      const calculatedTotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      if (Math.abs(calculatedTotal - totalAmount) > 0.01) {
+        console.warn('Amount mismatch detected:', { calculatedTotal, totalAmount });
+      }
+
+      console.log('🚀 Starting Speed QR checkout process...', {
+        totalAmount: totalAmount,
+        itemCount: cartItems.length,
+        items: cartItems.map(item => ({ name: item.name, price: item.price, quantity: item.quantity }))
+      });
+
       setShowQRCode(true);
       setPaymentStatus('pending');
 
-      // Create payment session
+      // Create payment session with exact cart amount
       const checkoutData = {
-        amount: totalAmount,
+        amount: Number(totalAmount.toFixed(2)), // Ensure proper decimal handling
         currency: 'USD',
         items: convertCartItems(cartItems),
         customer: {
@@ -87,11 +98,18 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         metadata: {
           source: 'pokemon-ecommerce-qr',
           cartItemCount: cartItems.length,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          cartTotal: totalAmount,
+          itemDetails: cartItems.map(item => `${item.name} x${item.quantity}`)
         }
       };
 
-      console.log('📦 Checkout data:', checkoutData);
+      console.log('📦 Checkout data being sent:', {
+        amount: checkoutData.amount,
+        currency: checkoutData.currency,
+        itemCount: checkoutData.items.length,
+        metadata: checkoutData.metadata
+      });
 
       const qrData = await speedCheckoutService.createPaymentSession(checkoutData);
       setQRCodeData(qrData);
@@ -105,7 +123,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       console.log('✅ QR Code generated successfully:', {
         orderId: qrData.orderId,
         amount: qrData.amount,
-        expiresIn: remaining
+        currency: qrData.currency,
+        expiresIn: `${Math.floor(remaining / 60)}:${(remaining % 60).toString().padStart(2, '0')}`
       });
 
       // Start checking payment status
@@ -131,7 +150,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         const status = await speedCheckoutService.checkPaymentStatus(orderId);
         
         if (status.success && status.status === 'completed') {
-          console.log('✅ Payment completed successfully!');
+          console.log('✅ Payment completed successfully!', status);
           setPaymentStatus('completed');
           clearInterval(interval);
           setStatusCheckInterval(null);
@@ -145,13 +164,13 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
           }, 3000);
           
         } else if (status.status === 'failed') {
-          console.log('❌ Payment failed');
+          console.log('❌ Payment failed', status);
           setPaymentStatus('failed');
           clearInterval(interval);
           setStatusCheckInterval(null);
           onError?.(status.error?.message || 'Payment failed');
         } else {
-          console.log('⏳ Payment still pending...');
+          console.log('⏳ Payment still pending...', status);
           setPaymentStatus('pending');
         }
       } catch (error) {
@@ -228,7 +247,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         <div className="text-xs text-gray-300 space-y-1">
           <div>✅ API Key: {speedStatus.apiKey ? 'Configured' : 'Missing'}</div>
           <div>✅ Store ID: {speedStatus.storeId ? 'Configured' : 'Missing'}</div>
-          <div>✅ Amount: ${totalAmount.toFixed(2)} ({cartItems.length} items)</div>
+          <div>✅ Cart Total: ${totalAmount.toFixed(2)} ({cartItems.length} items)</div>
+          <div>✅ Items: {cartItems.map(item => `${item.name} x${item.quantity}`).join(', ')}</div>
         </div>
       </div>
 
@@ -242,8 +262,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                    flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed
                    ${className}`}
       >
-        <Zap className="w-6 h-6" />
-        SPEED QR CHECKOUT - ${totalAmount.toFixed(2)}
+        <QrCode className="w-6 h-6" />
+        GENERATE QR CODE - ${totalAmount.toFixed(2)}
       </button>
 
       {/* QR Code Modal */}
@@ -252,11 +272,16 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
           <div className="bg-gray-800 rounded-2xl comic-border border-4 border-pokemon-yellow p-6 max-w-md w-full">
             {/* Header */}
             <div className="text-center mb-4">
-              <h3 className="comic-font text-2xl text-pokemon-yellow mb-2">Speed QR Checkout</h3>
-              <p className="comic-text text-white">Scan to pay ${totalAmount.toFixed(2)}</p>
+              <h3 className="comic-font text-2xl text-pokemon-yellow mb-2">Speed QR Payment</h3>
+              <p className="comic-text text-white font-bold text-xl">
+                Pay ${totalAmount.toFixed(2)} USD
+              </p>
+              <p className="comic-text text-sm text-gray-300 mt-1">
+                {cartItems.length} Pokemon game{cartItems.length !== 1 ? 's' : ''}
+              </p>
               {timeRemaining > 0 && (
-                <p className="comic-text text-sm text-gray-300 mt-1">
-                  Expires in: {formatTime(timeRemaining)}
+                <p className="comic-text text-sm text-pokemon-yellow mt-2 font-bold">
+                  ⏰ Expires in: {formatTime(timeRemaining)}
                 </p>
               )}
             </div>
@@ -265,7 +290,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
             {qrCodeData ? (
               <div className="text-center space-y-4">
                 {/* QR Code */}
-                <div className="bg-white p-4 rounded-lg mx-auto inline-block">
+                <div className="bg-white p-4 rounded-lg mx-auto inline-block comic-border">
                   <img 
                     src={qrCodeData.qrCode} 
                     alt="Speed Checkout QR Code"
@@ -277,8 +302,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                 <div className="space-y-2">
                   {paymentStatus === 'pending' && (
                     <div className="flex items-center justify-center gap-2 text-pokemon-yellow">
-                      <QrCode className="w-5 h-5" />
-                      <span className="comic-text">Waiting for payment...</span>
+                      <QrCode className="w-5 h-5 animate-pulse" />
+                      <span className="comic-text font-bold">Scan QR code to pay ${totalAmount.toFixed(2)}</span>
                     </div>
                   )}
                   
@@ -292,14 +317,14 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                   {paymentStatus === 'completed' && (
                     <div className="flex items-center justify-center gap-2 text-green-400">
                       <CheckCircle className="w-5 h-5" />
-                      <span className="comic-text font-bold">Payment Successful!</span>
+                      <span className="comic-text font-bold">Payment of ${totalAmount.toFixed(2)} Successful!</span>
                     </div>
                   )}
                   
                   {paymentStatus === 'failed' && (
                     <div className="flex items-center justify-center gap-2 text-red-400">
                       <AlertCircle className="w-5 h-5" />
-                      <span className="comic-text">Payment Failed</span>
+                      <span className="comic-text">Payment Failed - Try Again</span>
                     </div>
                   )}
                 </div>
@@ -332,16 +357,24 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                 {/* Order Info */}
                 <div className="bg-gray-700 rounded-lg p-3 text-left">
                   <div className="text-xs text-gray-300 space-y-1">
+                    <div className="font-bold text-pokemon-yellow">Order Details:</div>
                     <div>Order ID: {qrCodeData.orderId}</div>
                     <div>Amount: ${qrCodeData.amount.toFixed(2)} {qrCodeData.currency}</div>
                     <div>Items: {cartItems.length} Pokemon games</div>
+                    <div className="mt-2">
+                      {cartItems.map((item, index) => (
+                        <div key={index} className="text-xs">
+                          • {item.name} x{item.quantity} = ${(item.price * item.quantity).toFixed(2)}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="text-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-pokemon-yellow" />
-                <p className="comic-text text-white">Generating QR code...</p>
+                <p className="comic-text text-white">Generating QR code for ${totalAmount.toFixed(2)}...</p>
               </div>
             )}
 
@@ -361,7 +394,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       {/* Speed Checkout Info */}
       <div className="text-center">
         <p className="comic-text text-xs text-gray-400">
-          ⚡ Powered by Speed Commerce • QR Code & Mobile Payments
+          ⚡ Powered by Speed Commerce • Secure QR Code Payments
         </p>
       </div>
     </div>
