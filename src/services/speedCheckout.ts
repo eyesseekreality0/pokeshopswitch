@@ -1,4 +1,4 @@
-// Speed Checkout Service Integration with QR Code Support
+// Strike Lightning Payment Service Integration with QR Code Support
 export interface SpeedCheckoutItem {
   id: string;
   name: string;
@@ -61,34 +61,32 @@ export interface SpeedQRCodeData {
 
 class SpeedCheckoutService {
   private apiKey: string;
-  private storeId: string;
   private apiUrl: string;
   private isInitialized = false;
 
   constructor() {
-    this.apiKey = import.meta.env.VITE_SPEED_API_KEY || '';
-    this.storeId = import.meta.env.VITE_SPEED_STORE_ID || '';
-    this.apiUrl = import.meta.env.VITE_SPEED_API_URL || 'https://api.tryspeed.com/v1';
+    this.apiKey = import.meta.env.VITE_STRIKE_API_KEY || '';
+    this.apiUrl = import.meta.env.VITE_STRIKE_API_URL || 'https://api.strike.me/v1';
   }
 
-  // Check if Speed Checkout is configured
+  // Check if Strike is configured
   isConfigured(): boolean {
-    return !!(this.apiKey && this.storeId && this.apiUrl);
+    return !!(this.apiKey && this.apiUrl);
   }
 
-  // Initialize Speed SDK
+  // Initialize Strike SDK
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
     
     if (!this.isConfigured()) {
-      throw new Error('Speed Checkout is not configured. Please set VITE_SPEED_API_KEY and VITE_SPEED_STORE_ID');
+      throw new Error('Strike is not configured. Please set VITE_STRIKE_API_KEY');
     }
 
     this.isInitialized = true;
-    console.log('✅ Speed Checkout initialized successfully');
+    console.log('✅ Strike Lightning Payment initialized successfully');
   }
 
-  // Create payment session and get QR code
+  // Create Lightning invoice and get QR code
   async createPaymentSession(checkoutData: SpeedCheckoutData): Promise<SpeedQRCodeData> {
     try {
       await this.initialize();
@@ -96,44 +94,39 @@ class SpeedCheckoutService {
       // Validate checkout data
       this.validateCheckoutData(checkoutData);
 
+      // Convert USD to satoshis (Strike handles conversion)
+      const amountUsd = Number(checkoutData.amount.toFixed(2));
+
       const payload = {
-        store_id: this.storeId,
-        amount: Math.round(checkoutData.amount * 100), // Convert to cents
-        currency: checkoutData.currency,
-        items: checkoutData.items.map(item => ({
-          id: item.id,
-          name: item.name,
-          price: Math.round(item.price * 100), // Convert to cents
-          quantity: item.quantity,
-          description: item.description,
-          image_url: item.image,
-          category: item.category
-        })),
-        customer: checkoutData.customer,
-        shipping_address: checkoutData.shipping,
+        handle: 'pokemon-ecommerce', // Your Strike handle
+        amount: {
+          currency: 'USD',
+          amount: amountUsd.toString()
+        },
+        description: `Pokemon Games Purchase - ${checkoutData.items.length} items`,
         metadata: {
           ...checkoutData.metadata,
           source: 'pokemon-ecommerce',
-          timestamp: new Date().toISOString()
-        },
-        payment_methods: ['qr_code', 'mobile_wallet', 'card'],
-        return_url: window.location.origin + '/checkout/success',
-        webhook_url: checkoutData.webhookUrl,
-        expires_in: 900 // 15 minutes
+          timestamp: new Date().toISOString(),
+          items: checkoutData.items.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        }
       };
 
-      console.log('🚀 Creating Speed payment session...', {
+      console.log('🚀 Creating Strike Lightning invoice...', {
         amount: payload.amount,
-        currency: payload.currency,
-        itemCount: payload.items.length
+        description: payload.description,
+        itemCount: checkoutData.items.length
       });
 
-      const response = await fetch(`${this.apiUrl}/payments/sessions`, {
+      const response = await fetch(`${this.apiUrl}/invoices`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
-          'X-Store-ID': this.storeId,
           'User-Agent': 'Pokemon-Ecommerce/1.0'
         },
         body: JSON.stringify(payload)
@@ -141,7 +134,7 @@ class SpeedCheckoutService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Speed API Error:', {
+        console.error('Strike API Error:', {
           status: response.status,
           statusText: response.statusText,
           body: errorText
@@ -150,7 +143,7 @@ class SpeedCheckoutService {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         try {
           const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorMessage;
+          errorMessage = errorData.message || errorData.error || errorMessage;
         } catch {
           // Use default error message if JSON parsing fails
         }
@@ -159,32 +152,38 @@ class SpeedCheckoutService {
       }
 
       const data = await response.json();
-      console.log('✅ Speed payment session created:', data);
+      console.log('✅ Strike Lightning invoice created:', data);
+
+      // Generate QR code for the Lightning invoice
+      const lightningUri = data.lnInvoice || data.paymentRequest;
+      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(lightningUri)}`;
+
+      // Create expiration time (15 minutes from now)
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
       return {
-        qrCode: data.qr_code || data.qrCode,
-        paymentUrl: data.payment_url || data.paymentUrl,
-        orderId: data.order_id || data.orderId,
+        qrCode: qrCodeUrl,
+        paymentUrl: lightningUri,
+        orderId: data.invoiceId || data.id,
         amount: checkoutData.amount,
         currency: checkoutData.currency,
-        expiresAt: data.expires_at || data.expiresAt
+        expiresAt: expiresAt
       };
     } catch (error) {
-      console.error('❌ Speed payment session creation error:', error);
+      console.error('❌ Strike Lightning invoice creation error:', error);
       throw error;
     }
   }
 
-  // Check payment status
+  // Check Lightning payment status
   async checkPaymentStatus(orderId: string): Promise<SpeedCheckoutResponse> {
     try {
-      console.log('🔍 Checking payment status for order:', orderId);
+      console.log('🔍 Checking Lightning payment status for invoice:', orderId);
       
-      const response = await fetch(`${this.apiUrl}/payments/sessions/${orderId}`, {
+      const response = await fetch(`${this.apiUrl}/invoices/${orderId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
-          'X-Store-ID': this.storeId,
           'User-Agent': 'Pokemon-Ecommerce/1.0'
         }
       });
@@ -194,23 +193,43 @@ class SpeedCheckoutService {
       }
 
       const data = await response.json();
-      console.log('📊 Payment status:', data);
+      console.log('📊 Lightning payment status:', data);
+
+      // Strike invoice states: 'UNPAID', 'PENDING', 'PAID', 'CANCELLED'
+      const status = data.state || data.status;
+      let mappedStatus: 'completed' | 'pending' | 'failed';
+      
+      switch (status) {
+        case 'PAID':
+          mappedStatus = 'completed';
+          break;
+        case 'PENDING':
+        case 'UNPAID':
+          mappedStatus = 'pending';
+          break;
+        case 'CANCELLED':
+        case 'EXPIRED':
+          mappedStatus = 'failed';
+          break;
+        default:
+          mappedStatus = 'pending';
+      }
 
       return {
-        success: data.status === 'completed',
-        transactionId: data.transaction_id || data.transactionId,
-        orderId: data.order_id || data.orderId,
-        paymentMethod: data.payment_method || data.paymentMethod,
-        amount: (data.amount || 0) / 100, // Convert from cents
-        currency: data.currency,
-        status: data.status,
-        error: data.status === 'failed' ? {
-          code: data.error_code || 'PAYMENT_FAILED',
-          message: data.error_message || 'Payment failed'
+        success: mappedStatus === 'completed',
+        transactionId: data.paymentId || data.transactionId,
+        orderId: data.invoiceId || data.id,
+        paymentMethod: 'lightning',
+        amount: data.amount?.amount ? parseFloat(data.amount.amount) : 0,
+        currency: data.amount?.currency || 'USD',
+        status: mappedStatus,
+        error: mappedStatus === 'failed' ? {
+          code: 'PAYMENT_FAILED',
+          message: `Payment ${status.toLowerCase()}`
         } : undefined
       };
     } catch (error) {
-      console.error('❌ Speed payment status check error:', error);
+      console.error('❌ Strike payment status check error:', error);
       return {
         success: false,
         error: {
@@ -226,7 +245,7 @@ class SpeedCheckoutService {
     try {
       const qrData = await this.createPaymentSession(checkoutData);
       
-      // For direct checkout, we'll return the payment URL
+      // For direct checkout, we'll return the Lightning payment URI
       return {
         success: true,
         orderId: qrData.orderId,
@@ -237,7 +256,7 @@ class SpeedCheckoutService {
         qrCode: qrData.qrCode
       };
     } catch (error) {
-      console.error('❌ Speed checkout error:', error);
+      console.error('❌ Strike checkout error:', error);
       return {
         success: false,
         error: {
@@ -288,9 +307,9 @@ class SpeedCheckoutService {
   getConfig() {
     return {
       apiKey: this.apiKey ? `${this.apiKey.substring(0, 12)}...` : 'Not set',
-      storeId: this.storeId ? `${this.storeId.substring(0, 12)}...` : 'Not set',
       apiUrl: this.apiUrl,
-      configured: this.isConfigured()
+      configured: this.isConfigured(),
+      provider: 'Strike Lightning'
     };
   }
 
@@ -300,8 +319,8 @@ class SpeedCheckoutService {
       configured: this.isConfigured(),
       initialized: this.isInitialized,
       apiKey: !!this.apiKey,
-      storeId: !!this.storeId,
-      apiUrl: !!this.apiUrl
+      apiUrl: !!this.apiUrl,
+      provider: 'Strike Lightning Network'
     };
   }
 }

@@ -36,12 +36,12 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
   };
 
   const handleSpeedCheckoutSuccess = (response: any) => {
-    console.log('Speed Checkout Success:', response);
+    console.log('Lightning Payment Success:', response);
     
     // Show success message
     const event = new CustomEvent('checkoutSuccess', {
       detail: {
-        provider: 'speed',
+        provider: 'lightning',
         transactionId: response.transactionId,
         orderId: response.orderId,
         amount: response.amount
@@ -56,12 +56,12 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
   };
 
   const handleSpeedCheckoutError = (error: string) => {
-    console.error('Speed Checkout Error:', error);
+    console.error('Lightning Payment Error:', error);
     
     // Show error notification
     const event = new CustomEvent('checkoutError', {
       detail: {
-        provider: 'speed',
+        provider: 'lightning',
         error
       }
     });
@@ -130,8 +130,8 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
-              <span className="comic-text text-purple-400">Speed Commerce</span>
+              <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+              <span className="comic-text text-orange-400">Lightning Network</span>
             </div>
           </div>
         </div>
@@ -246,7 +246,7 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
               </div>
             )}
 
-            {/* Speed Checkout Button */}
+            {/* Lightning Checkout Button */}
             <SpeedCheckoutButton
               cartItems={cartItems}
               totalAmount={totalPrice}
@@ -275,7 +275,7 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
             </button>
 
             <p className="text-xs text-gray-400 text-center comic-text">
-              Multiple payment options • SSL Secured • Digital Delivery
+              Multiple payment options • Lightning Network • SSL Secured • Digital Delivery
             </p>
           </div>
         )}

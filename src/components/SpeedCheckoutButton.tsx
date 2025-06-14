@@ -61,7 +61,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
   const handleGenerateQRCode = async () => {
     try {
       if (!speedCheckoutService.isConfigured()) {
-        onError?.('Speed Checkout is not configured');
+        onError?.('Strike Lightning payment is not configured');
         return;
       }
 
@@ -76,7 +76,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         console.warn('Amount mismatch detected:', { calculatedTotal, totalAmount });
       }
 
-      console.log('🚀 Starting Speed QR checkout process...', {
+      console.log('⚡ Starting Strike Lightning checkout process...', {
         totalAmount: totalAmount,
         itemCount: cartItems.length,
         items: cartItems.map(item => ({ name: item.name, price: item.price, quantity: item.quantity }))
@@ -85,7 +85,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       setShowQRCode(true);
       setPaymentStatus('pending');
 
-      // Create payment session with exact cart amount
+      // Create Lightning invoice with exact cart amount
       const checkoutData = {
         amount: Number(totalAmount.toFixed(2)), // Ensure proper decimal handling
         currency: 'USD',
@@ -96,7 +96,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
           lastName: 'Trainer'
         },
         metadata: {
-          source: 'pokemon-ecommerce-qr',
+          source: 'pokemon-ecommerce-lightning',
           cartItemCount: cartItems.length,
           timestamp: new Date().toISOString(),
           cartTotal: totalAmount,
@@ -104,7 +104,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         }
       };
 
-      console.log('📦 Checkout data being sent:', {
+      console.log('📦 Lightning invoice data being sent:', {
         amount: checkoutData.amount,
         currency: checkoutData.currency,
         itemCount: checkoutData.items.length,
@@ -120,7 +120,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
       setTimeRemaining(remaining);
 
-      console.log('✅ QR Code generated successfully:', {
+      console.log('✅ Lightning QR Code generated successfully:', {
         orderId: qrData.orderId,
         amount: qrData.amount,
         currency: qrData.currency,
@@ -131,8 +131,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       startStatusChecking(qrData.orderId);
 
     } catch (error) {
-      console.error('❌ QR Code generation error:', error);
-      onError?.(error instanceof Error ? error.message : 'Failed to generate QR code');
+      console.error('❌ Lightning QR Code generation error:', error);
+      onError?.(error instanceof Error ? error.message : 'Failed to generate Lightning invoice');
       setShowQRCode(false);
     }
   };
@@ -142,7 +142,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       clearInterval(statusCheckInterval);
     }
 
-    console.log('🔄 Starting payment status monitoring for order:', orderId);
+    console.log('🔄 Starting Lightning payment status monitoring for invoice:', orderId);
 
     const interval = setInterval(async () => {
       try {
@@ -150,7 +150,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         const status = await speedCheckoutService.checkPaymentStatus(orderId);
         
         if (status.success && status.status === 'completed') {
-          console.log('✅ Payment completed successfully!', status);
+          console.log('✅ Lightning payment completed successfully!', status);
           setPaymentStatus('completed');
           clearInterval(interval);
           setStatusCheckInterval(null);
@@ -164,17 +164,17 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
           }, 3000);
           
         } else if (status.status === 'failed') {
-          console.log('❌ Payment failed', status);
+          console.log('❌ Lightning payment failed', status);
           setPaymentStatus('failed');
           clearInterval(interval);
           setStatusCheckInterval(null);
-          onError?.(status.error?.message || 'Payment failed');
+          onError?.(status.error?.message || 'Lightning payment failed');
         } else {
-          console.log('⏳ Payment still pending...', status);
+          console.log('⏳ Lightning payment still pending...', status);
           setPaymentStatus('pending');
         }
       } catch (error) {
-        console.error('❌ Status check error:', error);
+        console.error('❌ Lightning status check error:', error);
         setPaymentStatus('pending');
       }
     }, 3000); // Check every 3 seconds
@@ -183,7 +183,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
   };
 
   const handleCloseQRCode = () => {
-    console.log('🔒 Closing QR code modal');
+    console.log('🔒 Closing Lightning QR code modal');
     setShowQRCode(false);
     setQRCodeData(null);
     setPaymentStatus('pending');
@@ -202,7 +202,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       // Show copied notification
       const notification = document.createElement('div');
       notification.className = 'fixed top-20 right-4 bg-pokemon-yellow text-black px-4 py-2 rounded-full comic-border comic-text font-bold z-50 animate-bounce-in';
-      notification.textContent = 'Payment URL copied!';
+      notification.textContent = 'Lightning invoice copied!';
       document.body.appendChild(notification);
       
       setTimeout(() => {
@@ -219,18 +219,18 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
 
   const speedStatus = getSpeedStatus();
 
-  // Show configuration error if Speed is not configured
+  // Show configuration error if Strike is not configured
   if (!speedStatus.configured) {
     return (
       <div className="bg-gray-700 bg-opacity-80 rounded-lg p-4 text-center">
         <AlertCircle className="w-6 h-6 mx-auto mb-2 text-red-400" />
-        <p className="comic-text text-sm text-red-400 font-bold">Speed Checkout Not Configured</p>
+        <p className="comic-text text-sm text-red-400 font-bold">Strike Lightning Not Configured</p>
         <p className="comic-text text-xs text-gray-300 mt-1">
-          Set VITE_SPEED_API_KEY and VITE_SPEED_STORE_ID in your environment
+          Set VITE_STRIKE_API_KEY in your environment
         </p>
         <div className="mt-2 text-xs text-gray-400">
           <div>API Key: {speedStatus.apiKey ? '✅' : '❌'}</div>
-          <div>Store ID: {speedStatus.storeId ? '✅' : '❌'}</div>
+          <div>Provider: Strike Lightning Network</div>
         </div>
       </div>
     );
@@ -238,41 +238,41 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Speed Checkout Status */}
+      {/* Strike Lightning Status */}
       <div className="bg-gray-700 bg-opacity-80 rounded-lg p-3">
         <div className="flex items-center gap-2 mb-2">
           <CheckCircle className="w-4 h-4 text-green-400" />
-          <span className="comic-text text-sm text-green-400 font-bold">Speed Checkout Ready</span>
+          <span className="comic-text text-sm text-green-400 font-bold">Strike Lightning Ready</span>
         </div>
         <div className="text-xs text-gray-300 space-y-1">
           <div>✅ API Key: {speedStatus.apiKey ? 'Configured' : 'Missing'}</div>
-          <div>✅ Store ID: {speedStatus.storeId ? 'Configured' : 'Missing'}</div>
+          <div>⚡ Provider: Strike Lightning Network</div>
           <div>✅ Cart Total: ${totalAmount.toFixed(2)} ({cartItems.length} items)</div>
           <div>✅ Items: {cartItems.map(item => `${item.name} x${item.quantity}`).join(', ')}</div>
         </div>
       </div>
 
-      {/* QR Code Checkout Button */}
+      {/* Lightning QR Code Checkout Button */}
       <button
         onClick={handleGenerateQRCode}
         disabled={disabled || !speedStatus.configured || cartItems.length === 0}
-        className={`w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 
+        className={`w-full bg-gradient-to-r from-orange-500 to-yellow-500 hover:from-orange-600 hover:to-yellow-600 
                    text-white font-bold py-4 px-6 rounded-full comic-border comic-text text-lg 
                    transform hover:scale-105 transition-all duration-300 comic-button comic-shadow 
                    flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed
                    ${className}`}
       >
-        <QrCode className="w-6 h-6" />
-        GENERATE QR CODE - ${totalAmount.toFixed(2)}
+        <Zap className="w-6 h-6" />
+        ⚡ LIGHTNING PAY - ${totalAmount.toFixed(2)}
       </button>
 
-      {/* QR Code Modal */}
+      {/* Lightning QR Code Modal */}
       {showQRCode && (
         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-2xl comic-border border-4 border-pokemon-yellow p-6 max-w-md w-full">
+          <div className="bg-gray-800 rounded-2xl comic-border border-4 border-orange-400 p-6 max-w-md w-full">
             {/* Header */}
             <div className="text-center mb-4">
-              <h3 className="comic-font text-2xl text-pokemon-yellow mb-2">Speed QR Payment</h3>
+              <h3 className="comic-font text-2xl text-orange-400 mb-2">⚡ Lightning Payment</h3>
               <p className="comic-text text-white font-bold text-xl">
                 Pay ${totalAmount.toFixed(2)} USD
               </p>
@@ -280,7 +280,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                 {cartItems.length} Pokemon game{cartItems.length !== 1 ? 's' : ''}
               </p>
               {timeRemaining > 0 && (
-                <p className="comic-text text-sm text-pokemon-yellow mt-2 font-bold">
+                <p className="comic-text text-sm text-orange-400 mt-2 font-bold">
                   ⏰ Expires in: {formatTime(timeRemaining)}
                 </p>
               )}
@@ -293,7 +293,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                 <div className="bg-white p-4 rounded-lg mx-auto inline-block comic-border">
                   <img 
                     src={qrCodeData.qrCode} 
-                    alt="Speed Checkout QR Code"
+                    alt="Lightning Payment QR Code"
                     className="w-48 h-48 mx-auto"
                   />
                 </div>
@@ -301,30 +301,30 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                 {/* Payment Status */}
                 <div className="space-y-2">
                   {paymentStatus === 'pending' && (
-                    <div className="flex items-center justify-center gap-2 text-pokemon-yellow">
-                      <QrCode className="w-5 h-5 animate-pulse" />
-                      <span className="comic-text font-bold">Scan QR code to pay ${totalAmount.toFixed(2)}</span>
+                    <div className="flex items-center justify-center gap-2 text-orange-400">
+                      <Zap className="w-5 h-5 animate-pulse" />
+                      <span className="comic-text font-bold">Scan to pay ${totalAmount.toFixed(2)} via Lightning</span>
                     </div>
                   )}
                   
                   {paymentStatus === 'checking' && (
                     <div className="flex items-center justify-center gap-2 text-blue-400">
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="comic-text">Checking payment status...</span>
+                      <span className="comic-text">Checking Lightning payment...</span>
                     </div>
                   )}
                   
                   {paymentStatus === 'completed' && (
                     <div className="flex items-center justify-center gap-2 text-green-400">
                       <CheckCircle className="w-5 h-5" />
-                      <span className="comic-text font-bold">Payment of ${totalAmount.toFixed(2)} Successful!</span>
+                      <span className="comic-text font-bold">Lightning payment of ${totalAmount.toFixed(2)} successful!</span>
                     </div>
                   )}
                   
                   {paymentStatus === 'failed' && (
                     <div className="flex items-center justify-center gap-2 text-red-400">
                       <AlertCircle className="w-5 h-5" />
-                      <span className="comic-text">Payment Failed - Try Again</span>
+                      <span className="comic-text">Lightning payment failed - Try Again</span>
                     </div>
                   )}
                 </div>
@@ -333,13 +333,13 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                 <div className="space-y-2">
                   <button
                     onClick={handleCopyPaymentUrl}
-                    className="w-full bg-pokemon-yellow hover:bg-yellow-400 text-black font-bold 
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold 
                              py-2 px-4 rounded-lg comic-border comic-text 
                              transform hover:scale-105 transition-all duration-300 
                              flex items-center justify-center gap-2"
                   >
                     <Copy className="w-4 h-4" />
-                    Copy Payment Link
+                    Copy Lightning Invoice
                   </button>
 
                   <button
@@ -350,15 +350,15 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                              flex items-center justify-center gap-2"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    Open Payment Page
+                    Open in Lightning Wallet
                   </button>
                 </div>
 
                 {/* Order Info */}
                 <div className="bg-gray-700 rounded-lg p-3 text-left">
                   <div className="text-xs text-gray-300 space-y-1">
-                    <div className="font-bold text-pokemon-yellow">Order Details:</div>
-                    <div>Order ID: {qrCodeData.orderId}</div>
+                    <div className="font-bold text-orange-400">Lightning Invoice Details:</div>
+                    <div>Invoice ID: {qrCodeData.orderId}</div>
                     <div>Amount: ${qrCodeData.amount.toFixed(2)} {qrCodeData.currency}</div>
                     <div>Items: {cartItems.length} Pokemon games</div>
                     <div className="mt-2">
@@ -373,8 +373,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
               </div>
             ) : (
               <div className="text-center py-8">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-pokemon-yellow" />
-                <p className="comic-text text-white">Generating QR code for ${totalAmount.toFixed(2)}...</p>
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-orange-400" />
+                <p className="comic-text text-white">Generating Lightning invoice for ${totalAmount.toFixed(2)}...</p>
               </div>
             )}
 
@@ -391,10 +391,10 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         </div>
       )}
 
-      {/* Speed Checkout Info */}
+      {/* Strike Lightning Info */}
       <div className="text-center">
         <p className="comic-text text-xs text-gray-400">
-          ⚡ Powered by Speed Commerce • Secure QR Code Payments
+          ⚡ Powered by Strike • Bitcoin Lightning Network • Instant Payments
         </p>
       </div>
     </div>
