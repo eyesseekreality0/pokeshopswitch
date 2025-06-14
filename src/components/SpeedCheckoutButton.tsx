@@ -70,6 +70,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         return;
       }
 
+      console.log('🚀 Starting Speed QR checkout process...');
       setShowQRCode(true);
       setPaymentStatus('pending');
 
@@ -90,6 +91,8 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
         }
       };
 
+      console.log('📦 Checkout data:', checkoutData);
+
       const qrData = await speedCheckoutService.createPaymentSession(checkoutData);
       setQRCodeData(qrData);
 
@@ -99,11 +102,17 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
       setTimeRemaining(remaining);
 
+      console.log('✅ QR Code generated successfully:', {
+        orderId: qrData.orderId,
+        amount: qrData.amount,
+        expiresIn: remaining
+      });
+
       // Start checking payment status
       startStatusChecking(qrData.orderId);
 
     } catch (error) {
-      console.error('QR Code generation error:', error);
+      console.error('❌ QR Code generation error:', error);
       onError?.(error instanceof Error ? error.message : 'Failed to generate QR code');
       setShowQRCode(false);
     }
@@ -114,12 +123,15 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
       clearInterval(statusCheckInterval);
     }
 
+    console.log('🔄 Starting payment status monitoring for order:', orderId);
+
     const interval = setInterval(async () => {
       try {
         setPaymentStatus('checking');
         const status = await speedCheckoutService.checkPaymentStatus(orderId);
         
         if (status.success && status.status === 'completed') {
+          console.log('✅ Payment completed successfully!');
           setPaymentStatus('completed');
           clearInterval(interval);
           setStatusCheckInterval(null);
@@ -133,15 +145,17 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
           }, 3000);
           
         } else if (status.status === 'failed') {
+          console.log('❌ Payment failed');
           setPaymentStatus('failed');
           clearInterval(interval);
           setStatusCheckInterval(null);
           onError?.(status.error?.message || 'Payment failed');
         } else {
+          console.log('⏳ Payment still pending...');
           setPaymentStatus('pending');
         }
       } catch (error) {
-        console.error('Status check error:', error);
+        console.error('❌ Status check error:', error);
         setPaymentStatus('pending');
       }
     }, 3000); // Check every 3 seconds
@@ -150,6 +164,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
   };
 
   const handleCloseQRCode = () => {
+    console.log('🔒 Closing QR code modal');
     setShowQRCode(false);
     setQRCodeData(null);
     setPaymentStatus('pending');
@@ -227,7 +242,7 @@ const SpeedCheckoutButton: React.FC<SpeedCheckoutButtonProps> = ({
                    flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed
                    ${className}`}
       >
-        <QrCode className="w-6 h-6" />
+        <Zap className="w-6 h-6" />
         SPEED QR CHECKOUT - ${totalAmount.toFixed(2)}
       </button>
 

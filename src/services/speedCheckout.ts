@@ -85,6 +85,7 @@ class SpeedCheckoutService {
     }
 
     this.isInitialized = true;
+    console.log('✅ Speed Checkout initialized successfully');
   }
 
   // Create payment session and get QR code
@@ -121,33 +122,55 @@ class SpeedCheckoutService {
         expires_in: 900 // 15 minutes
       };
 
+      console.log('🚀 Creating Speed payment session...', {
+        amount: payload.amount,
+        currency: payload.currency,
+        itemCount: payload.items.length
+      });
+
       const response = await fetch(`${this.apiUrl}/payments/sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
-          'X-Store-ID': this.storeId
+          'X-Store-ID': this.storeId,
+          'User-Agent': 'Pokemon-Ecommerce/1.0'
         },
         body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Speed API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // Use default error message if JSON parsing fails
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('✅ Speed payment session created:', data);
 
       return {
-        qrCode: data.qr_code,
-        paymentUrl: data.payment_url,
-        orderId: data.order_id,
+        qrCode: data.qr_code || data.qrCode,
+        paymentUrl: data.payment_url || data.paymentUrl,
+        orderId: data.order_id || data.orderId,
         amount: checkoutData.amount,
         currency: checkoutData.currency,
-        expiresAt: data.expires_at
+        expiresAt: data.expires_at || data.expiresAt
       };
     } catch (error) {
-      console.error('Speed payment session creation error:', error);
+      console.error('❌ Speed payment session creation error:', error);
       throw error;
     }
   }
@@ -155,11 +178,14 @@ class SpeedCheckoutService {
   // Check payment status
   async checkPaymentStatus(orderId: string): Promise<SpeedCheckoutResponse> {
     try {
+      console.log('🔍 Checking payment status for order:', orderId);
+      
       const response = await fetch(`${this.apiUrl}/payments/sessions/${orderId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
-          'X-Store-ID': this.storeId
+          'X-Store-ID': this.storeId,
+          'User-Agent': 'Pokemon-Ecommerce/1.0'
         }
       });
 
@@ -168,13 +194,14 @@ class SpeedCheckoutService {
       }
 
       const data = await response.json();
+      console.log('📊 Payment status:', data);
 
       return {
         success: data.status === 'completed',
-        transactionId: data.transaction_id,
-        orderId: data.order_id,
-        paymentMethod: data.payment_method,
-        amount: data.amount / 100, // Convert from cents
+        transactionId: data.transaction_id || data.transactionId,
+        orderId: data.order_id || data.orderId,
+        paymentMethod: data.payment_method || data.paymentMethod,
+        amount: (data.amount || 0) / 100, // Convert from cents
         currency: data.currency,
         status: data.status,
         error: data.status === 'failed' ? {
@@ -183,7 +210,7 @@ class SpeedCheckoutService {
         } : undefined
       };
     } catch (error) {
-      console.error('Speed payment status check error:', error);
+      console.error('❌ Speed payment status check error:', error);
       return {
         success: false,
         error: {
@@ -210,7 +237,7 @@ class SpeedCheckoutService {
         qrCode: qrData.qrCode
       };
     } catch (error) {
-      console.error('Speed checkout error:', error);
+      console.error('❌ Speed checkout error:', error);
       return {
         success: false,
         error: {
@@ -260,8 +287,8 @@ class SpeedCheckoutService {
   // Get configuration
   getConfig() {
     return {
-      apiKey: this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'Not set',
-      storeId: this.storeId ? `${this.storeId.substring(0, 8)}...` : 'Not set',
+      apiKey: this.apiKey ? `${this.apiKey.substring(0, 12)}...` : 'Not set',
+      storeId: this.storeId ? `${this.storeId.substring(0, 12)}...` : 'Not set',
       apiUrl: this.apiUrl,
       configured: this.isConfigured()
     };
