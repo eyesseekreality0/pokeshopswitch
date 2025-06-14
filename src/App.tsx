@@ -6,13 +6,22 @@ import CartSidebar from './components/CartSidebar';
 import Footer from './components/Footer';
 import InfoPage from './components/InfoPage';
 import { useCart } from './hooks/useCart';
-import { products } from './data/products';
+import { products, debugImagePaths } from './data/products';
+import { debugProductImages } from './utils/imageUtils';
 import { Product } from './types';
 
 function App() {
   const cart = useCart();
   const [currentView, setCurrentView] = useState('home');
   const [currentInfoPage, setCurrentInfoPage] = useState<string | null>(null);
+
+  // Debug images in development
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      debugImagePaths();
+      debugProductImages(products);
+    }
+  }, []);
 
   // Add visual feedback for cart additions
   useEffect(() => {

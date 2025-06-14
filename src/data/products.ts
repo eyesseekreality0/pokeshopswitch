@@ -217,3 +217,11 @@ export const products: Product[] = [
 export const featuredProducts = products.filter(p => p.category === 'popular' || p.category === 'new').slice(0, 6);
 export const newProducts = products.filter(p => p.category === 'new');
 export const popularProducts = products.filter(p => p.category === 'popular');
+
+// Debug function to check image paths
+export const debugImagePaths = () => {
+  console.log('🔍 Product Image Paths:');
+  products.forEach(product => {
+    console.log(`${product.name}: ${product.image}`);
+  });
+};

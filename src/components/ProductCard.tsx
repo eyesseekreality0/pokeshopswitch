@@ -10,6 +10,8 @@ interface ProductCardProps {
 const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleAddToCart = () => {
     onAddToCart(product);
@@ -22,6 +24,30 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
         button.classList.remove('animate-pulse');
       }, 1000);
     }
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    console.warn(`Failed to load image: ${product.image}`);
+  };
+
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    setImageError(false);
+  };
+
+  // Create fallback image URL
+  const getFallbackImage = () => {
+    return `https://via.placeholder.com/400x300/FFD700/000000?text=${encodeURIComponent(product.name)}`;
+  };
+
+  // Get optimized image path
+  const getImagePath = () => {
+    // Ensure the path starts with / for public folder
+    if (product.image.startsWith('/')) {
+      return product.image;
+    }
+    return `/${product.image}`;
   };
 
   const getRarityColor = () => {
@@ -87,14 +113,37 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAddToCart }) => {
               {product.generation}
             </div>
 
-            {/* Product Image - Responsive height */}
+            {/* Product Image - Responsive height with loading states */}
             <div className="relative h-20 sm:h-24 md:h-32 lg:h-40 overflow-hidden flex-shrink-0">
+              {/* Loading placeholder */}
+              {!imageLoaded && !imageError && (
+                <div className="absolute inset-0 bg-gray-700 animate-pulse flex items-center justify-center">
+                  <div className="text-gray-400 text-xs">Loading...</div>
+                </div>
+              )}
+              
+              {/* Main image */}
               <img
-                src={product.image}
+                src={imageError ? getFallbackImage() : getImagePath()}
                 alt={`${product.name} - Pokemon Game Cover Art`}
                 className={`w-full h-full object-cover transition-all duration-700
-                           ${isHovered ? 'scale-110 brightness-110' : 'scale-100'}`}
+                           ${isHovered ? 'scale-110 brightness-110' : 'scale-100'}
+                           ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+                loading="lazy"
+                decoding="async"
               />
+              
+              {/* Error state */}
+              {imageError && (
+                <div className="absolute inset-0 bg-gray-700 flex items-center justify-center">
+                  <div className="text-center text-xs text-gray-300">
+                    <div className="mb-1">📷</div>
+                    <div>Image Unavailable</div>
+                  </div>
+                </div>
+              )}
               
               {/* Floating Sparkles - Hidden on very small screens */}
               <div className={`absolute top-1 right-1 transition-all duration-1000 hidden sm:block
