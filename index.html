@@ -10,6 +10,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Speed Checkout SDK -->
+    <script src="https://js.tryspeed.com/v1/speed.js" async></script>
+    <script>
+      window.speedConfig = {
+        apiKey: import.meta.env?.VITE_SPEED_API_KEY || '',
+        environment: 'production', // or 'sandbox' for testing
+        currency: 'USD',
+        country: 'US'
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>

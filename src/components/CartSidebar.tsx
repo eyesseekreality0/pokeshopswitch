@@ -3,6 +3,7 @@ import { X, Plus, Minus, ShoppingBag, CreditCard, ExternalLink } from 'lucide-re
 import { CartItem } from '../types';
 import { useShopifyCart } from '../hooks/useShopify';
 import { shopifyService } from '../services/shopify';
+import SpeedCheckoutButton from './SpeedCheckoutButton';
 
 interface CartSidebarProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
   const { cart, checkout, loading } = useShopifyCart();
   const isShopifyConfigured = shopifyService.isConfigured();
 
-  const handleCheckout = async () => {
+  const handleShopifyCheckout = async () => {
     if (isShopifyConfigured && cart) {
       // Use Shopify checkout
       await checkout();
@@ -34,7 +35,40 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
     }
   };
 
-  const getCheckoutButtonText = () => {
+  const handleSpeedCheckoutSuccess = (response: any) => {
+    console.log('Speed Checkout Success:', response);
+    
+    // Show success message
+    const event = new CustomEvent('checkoutSuccess', {
+      detail: {
+        provider: 'speed',
+        transactionId: response.transactionId,
+        orderId: response.orderId,
+        amount: response.amount
+      }
+    });
+    window.dispatchEvent(event);
+
+    // Close cart after successful checkout
+    setTimeout(() => {
+      onClose();
+    }, 2000);
+  };
+
+  const handleSpeedCheckoutError = (error: string) => {
+    console.error('Speed Checkout Error:', error);
+    
+    // Show error notification
+    const event = new CustomEvent('checkoutError', {
+      detail: {
+        provider: 'speed',
+        error
+      }
+    });
+    window.dispatchEvent(event);
+  };
+
+  const getShopifyCheckoutButtonText = () => {
     if (isShopifyConfigured) {
       return (
         <>
@@ -46,7 +80,7 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
     return (
       <>
         <CreditCard className="w-5 h-5" />
-        SECURE CHECKOUT
+        DEMO CHECKOUT
       </>
     );
   };
@@ -87,13 +121,19 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
             {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'} in cart
           </p>
 
-          {/* Shopify Status */}
-          {isShopifyConfigured && (
-            <div className="mt-2 flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="comic-text text-xs text-green-400">Shopify Connected</span>
+          {/* Payment Status Indicators */}
+          <div className="mt-2 flex items-center gap-4 text-xs">
+            {isShopifyConfigured && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="comic-text text-green-400">Shopify</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+              <span className="comic-text text-purple-400">Speed Commerce</span>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Cart Items */}
@@ -175,7 +215,7 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
           )}
         </div>
 
-        {/* Footer with Total and Checkout */}
+        {/* Footer with Total and Checkout Options */}
         {cartItems.length > 0 && (
           <div className="border-t-4 border-pokemon-yellow p-4 space-y-4 bg-gray-800 bg-opacity-95 backdrop-blur-sm">
             {/* Total */}
@@ -206,9 +246,17 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
               </div>
             )}
 
-            {/* Checkout Button */}
+            {/* Speed Checkout Button */}
+            <SpeedCheckoutButton
+              cartItems={cartItems}
+              totalAmount={totalPrice}
+              onSuccess={handleSpeedCheckoutSuccess}
+              onError={handleSpeedCheckoutError}
+            />
+
+            {/* Shopify Checkout Button */}
             <button
-              onClick={handleCheckout}
+              onClick={handleShopifyCheckout}
               disabled={loading}
               className="w-full bg-pokemon-yellow hover:bg-yellow-400 text-black 
                        font-bold py-4 px-6 rounded-full comic-border comic-text 
@@ -222,15 +270,12 @@ const CartSidebar: React.FC<CartSidebarProps> = ({
                   PROCESSING...
                 </>
               ) : (
-                getCheckoutButtonText()
+                getShopifyCheckoutButtonText()
               )}
             </button>
 
             <p className="text-xs text-gray-400 text-center comic-text">
-              {isShopifyConfigured 
-                ? 'Secure Shopify Checkout • Real Payments • Instant Delivery'
-                : 'SSL Secured • Digital Delivery • Authentic Games'
-              }
+              Multiple payment options • SSL Secured • Digital Delivery
             </p>
           </div>
         )}

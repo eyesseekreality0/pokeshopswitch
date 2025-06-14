@@ -30,7 +30,7 @@ function App() {
     }
   }, []);
 
-  // Add visual feedback for cart additions
+  // Add visual feedback for cart additions and checkout events
   useEffect(() => {
     const handleCartItemAdded = (event: CustomEvent) => {
       // Create floating notification
@@ -44,11 +44,59 @@ function App() {
       }, 2000);
     };
 
+    const handleCheckoutSuccess = (event: CustomEvent) => {
+      const { provider, transactionId, amount } = event.detail;
+      
+      // Create success notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-20 right-4 bg-green-500 text-white px-6 py-3 rounded-lg comic-border comic-text font-bold z-50 animate-bounce-in';
+      notification.innerHTML = `
+        <div class="text-center">
+          <div class="text-lg">✅ Payment Successful!</div>
+          <div class="text-sm mt-1">via ${provider.toUpperCase()}</div>
+          ${amount ? `<div class="text-xs mt-1">$${amount}</div>` : ''}
+        </div>
+      `;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 5000);
+
+      // Clear cart after successful checkout
+      cart.clearCart();
+    };
+
+    const handleCheckoutError = (event: CustomEvent) => {
+      const { provider, error } = event.detail;
+      
+      // Create error notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-20 right-4 bg-red-500 text-white px-6 py-3 rounded-lg comic-border comic-text font-bold z-50 animate-bounce-in';
+      notification.innerHTML = `
+        <div class="text-center">
+          <div class="text-lg">❌ Payment Failed</div>
+          <div class="text-sm mt-1">via ${provider.toUpperCase()}</div>
+          <div class="text-xs mt-1">${error}</div>
+        </div>
+      `;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 4000);
+    };
+
     window.addEventListener('cartItemAdded', handleCartItemAdded as EventListener);
+    window.addEventListener('checkoutSuccess', handleCheckoutSuccess as EventListener);
+    window.addEventListener('checkoutError', handleCheckoutError as EventListener);
+    
     return () => {
       window.removeEventListener('cartItemAdded', handleCartItemAdded as EventListener);
+      window.removeEventListener('checkoutSuccess', handleCheckoutSuccess as EventListener);
+      window.removeEventListener('checkoutError', handleCheckoutError as EventListener);
     };
-  }, []);
+  }, [cart]);
 
   // Scroll to top when view changes
   useEffect(() => {
