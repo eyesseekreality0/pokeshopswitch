@@ -4,7 +4,8 @@ import {
   speedCheckoutService, 
   SpeedCheckoutData, 
   SpeedCheckoutResponse,
-  SpeedCheckoutItem 
+  SpeedCheckoutItem,
+  SpeedQRCodeData
 } from '../services/speedCheckout';
 
 export interface CheckoutState {
@@ -44,14 +45,20 @@ export const useSpeedCheckout = () => {
   useEffect(() => {
     const initializeSpeed = async () => {
       try {
-        await speedCheckoutService.initialize();
-        setIsSpeedReady(speedCheckoutService.isAvailable());
+        if (speedCheckoutService.isConfigured()) {
+          await speedCheckoutService.initialize();
+          setIsSpeedReady(true);
+        } else {
+          console.warn('Speed Checkout not configured');
+          setIsSpeedReady(false);
+        }
       } catch (error) {
         console.error('Failed to initialize Speed Checkout:', error);
         setCheckoutState(prev => ({
           ...prev,
           error: 'Failed to initialize payment system'
         }));
+        setIsSpeedReady(false);
       }
     };
 
@@ -87,13 +94,13 @@ export const useSpeedCheckout = () => {
     return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   }, []);
 
-  // Process checkout
-  const processCheckout = useCallback(async (
+  // Generate QR code for payment
+  const generateQRCode = useCallback(async (
     cartItems: CartItem[],
     customerInfo?: CustomerInfo,
     shippingInfo?: ShippingInfo,
     metadata?: Record<string, any>
-  ): Promise<SpeedCheckoutResponse> => {
+  ): Promise<SpeedQRCodeData | null> => {
     setCheckoutState({
       loading: true,
       error: null,
@@ -114,26 +121,38 @@ export const useSpeedCheckout = () => {
         amount: calculateTotal(cartItems),
         currency: 'USD',
         items: convertCartItems(cartItems),
-        customer: customerInfo,
+        customer: customerInfo || {
+          email: 'customer@pokeshop.com',
+          firstName: 'Pokemon',
+          lastName: 'Trainer'
+        },
         shipping: shippingInfo,
         metadata: {
-          source: 'pokemon-ecommerce',
+          source: 'pokemon-ecommerce-qr',
           timestamp: new Date().toISOString(),
           itemCount: cartItems.length,
           ...metadata
         }
       };
 
-      const response = await speedCheckoutService.processCheckout(checkoutData);
+      const qrData = await speedCheckoutService.createPaymentSession(checkoutData);
 
       setCheckoutState({
         loading: false,
-        error: response.success ? null : response.error?.message || 'Checkout failed',
-        success: response.success,
-        response
+        error: null,
+        success: true,
+        response: {
+          success: true,
+          orderId: qrData.orderId,
+          amount: qrData.amount,
+          currency: qrData.currency,
+          status: 'pending',
+          qrCode: qrData.qrCode,
+          paymentUrl: qrData.paymentUrl
+        }
       });
 
-      return response;
+      return qrData;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
@@ -144,15 +163,54 @@ export const useSpeedCheckout = () => {
         response: null
       });
 
+      return null;
+    }
+  }, [isSpeedReady, calculateTotal, convertCartItems]);
+
+  // Process checkout (legacy method for compatibility)
+  const processCheckout = useCallback(async (
+    cartItems: CartItem[],
+    customerInfo?: CustomerInfo,
+    shippingInfo?: ShippingInfo,
+    metadata?: Record<string, any>
+  ): Promise<SpeedCheckoutResponse> => {
+    const qrData = await generateQRCode(cartItems, customerInfo, shippingInfo, metadata);
+    
+    if (qrData) {
+      return {
+        success: true,
+        orderId: qrData.orderId,
+        amount: qrData.amount,
+        currency: qrData.currency,
+        status: 'pending',
+        qrCode: qrData.qrCode,
+        paymentUrl: qrData.paymentUrl
+      };
+    } else {
       return {
         success: false,
         error: {
           code: 'CHECKOUT_ERROR',
-          message: errorMessage
+          message: checkoutState.error || 'Checkout failed'
         }
       };
     }
-  }, [isSpeedReady, calculateTotal, convertCartItems]);
+  }, [generateQRCode, checkoutState.error]);
+
+  // Check payment status
+  const checkPaymentStatus = useCallback(async (orderId: string): Promise<SpeedCheckoutResponse> => {
+    try {
+      return await speedCheckoutService.checkPaymentStatus(orderId);
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: 'STATUS_CHECK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to check payment status'
+        }
+      };
+    }
+  }, []);
 
   // Reset checkout state
   const resetCheckout = useCallback(() => {
@@ -176,6 +234,8 @@ export const useSpeedCheckout = () => {
     
     // Actions
     processCheckout,
+    generateQRCode,
+    checkPaymentStatus,
     resetCheckout,
     
     // Utilities

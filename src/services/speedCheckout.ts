@@ -1,4 +1,4 @@
-// Speed Checkout Service Integration
+// Speed Checkout Service Integration with QR Code Support
 export interface SpeedCheckoutItem {
   id: string;
   name: string;
@@ -28,6 +28,9 @@ export interface SpeedCheckoutData {
     country: string;
   };
   metadata?: Record<string, any>;
+  paymentMethods?: string[];
+  returnUrl?: string;
+  webhookUrl?: string;
 }
 
 export interface SpeedCheckoutResponse {
@@ -38,127 +41,183 @@ export interface SpeedCheckoutResponse {
   amount?: number;
   currency?: string;
   status?: 'completed' | 'pending' | 'failed';
+  qrCode?: string;
+  paymentUrl?: string;
+  expiresAt?: string;
   error?: {
     code: string;
     message: string;
   };
 }
 
-declare global {
-  interface Window {
-    Speed?: {
-      init: (config: any) => void;
-      checkout: (data: SpeedCheckoutData) => Promise<SpeedCheckoutResponse>;
-      isReady: () => boolean;
-    };
-    speedConfig?: {
-      apiKey: string;
-      environment: string;
-      currency: string;
-      country: string;
-    };
-  }
+export interface SpeedQRCodeData {
+  qrCode: string;
+  paymentUrl: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  expiresAt: string;
 }
 
 class SpeedCheckoutService {
+  private apiKey: string;
+  private storeId: string;
+  private apiUrl: string;
   private isInitialized = false;
-  private initPromise: Promise<void> | null = null;
+
+  constructor() {
+    this.apiKey = import.meta.env.VITE_SPEED_API_KEY || '';
+    this.storeId = import.meta.env.VITE_SPEED_STORE_ID || '';
+    this.apiUrl = import.meta.env.VITE_SPEED_API_URL || 'https://api.tryspeed.com/v1';
+  }
+
+  // Check if Speed Checkout is configured
+  isConfigured(): boolean {
+    return !!(this.apiKey && this.storeId && this.apiUrl);
+  }
 
   // Initialize Speed SDK
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
     
-    if (this.initPromise) {
-      return this.initPromise;
+    if (!this.isConfigured()) {
+      throw new Error('Speed Checkout is not configured. Please set VITE_SPEED_API_KEY and VITE_SPEED_STORE_ID');
     }
 
-    this.initPromise = new Promise((resolve, reject) => {
-      // Check if Speed SDK is loaded
-      const checkSpeed = () => {
-        if (window.Speed && window.speedConfig) {
-          try {
-            window.Speed.init({
-              apiKey: window.speedConfig.apiKey,
-              environment: window.speedConfig.environment,
-              currency: window.speedConfig.currency,
-              country: window.speedConfig.country,
-              onReady: () => {
-                this.isInitialized = true;
-                resolve();
-              },
-              onError: (error: any) => {
-                console.error('Speed SDK initialization error:', error);
-                reject(error);
-              }
-            });
-          } catch (error) {
-            console.error('Speed SDK setup error:', error);
-            reject(error);
-          }
-        } else {
-          // Retry after a short delay
-          setTimeout(checkSpeed, 100);
-        }
-      };
-
-      checkSpeed();
-
-      // Timeout after 10 seconds
-      setTimeout(() => {
-        if (!this.isInitialized) {
-          reject(new Error('Speed SDK initialization timeout'));
-        }
-      }, 10000);
-    });
-
-    return this.initPromise;
+    this.isInitialized = true;
   }
 
-  // Check if Speed Checkout is available
-  isAvailable(): boolean {
-    return !!(window.Speed && window.speedConfig?.apiKey && this.isInitialized);
-  }
-
-  // Process checkout with Speed
-  async processCheckout(checkoutData: SpeedCheckoutData): Promise<SpeedCheckoutResponse> {
+  // Create payment session and get QR code
+  async createPaymentSession(checkoutData: SpeedCheckoutData): Promise<SpeedQRCodeData> {
     try {
       await this.initialize();
-
-      if (!this.isAvailable()) {
-        throw new Error('Speed Checkout is not available');
-      }
 
       // Validate checkout data
       this.validateCheckoutData(checkoutData);
 
-      // Process payment with Speed
-      const response = await window.Speed!.checkout(checkoutData);
+      const payload = {
+        store_id: this.storeId,
+        amount: Math.round(checkoutData.amount * 100), // Convert to cents
+        currency: checkoutData.currency,
+        items: checkoutData.items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: Math.round(item.price * 100), // Convert to cents
+          quantity: item.quantity,
+          description: item.description,
+          image_url: item.image,
+          category: item.category
+        })),
+        customer: checkoutData.customer,
+        shipping_address: checkoutData.shipping,
+        metadata: {
+          ...checkoutData.metadata,
+          source: 'pokemon-ecommerce',
+          timestamp: new Date().toISOString()
+        },
+        payment_methods: ['qr_code', 'mobile_wallet', 'card'],
+        return_url: window.location.origin + '/checkout/success',
+        webhook_url: checkoutData.webhookUrl,
+        expires_in: 900 // 15 minutes
+      };
 
-      // Log successful transaction
-      if (response.success) {
-        console.log('Speed Checkout successful:', response);
-        
-        // Track analytics event
-        this.trackCheckoutEvent('success', checkoutData, response);
-      } else {
-        console.error('Speed Checkout failed:', response.error);
-        this.trackCheckoutEvent('failed', checkoutData, response);
+      const response = await fetch(`${this.apiUrl}/payments/sessions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+          'X-Store-ID': this.storeId
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      return response;
+      const data = await response.json();
+
+      return {
+        qrCode: data.qr_code,
+        paymentUrl: data.payment_url,
+        orderId: data.order_id,
+        amount: checkoutData.amount,
+        currency: checkoutData.currency,
+        expiresAt: data.expires_at
+      };
     } catch (error) {
-      console.error('Speed Checkout error:', error);
+      console.error('Speed payment session creation error:', error);
+      throw error;
+    }
+  }
+
+  // Check payment status
+  async checkPaymentStatus(orderId: string): Promise<SpeedCheckoutResponse> {
+    try {
+      const response = await fetch(`${this.apiUrl}/payments/sessions/${orderId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'X-Store-ID': this.storeId
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        success: data.status === 'completed',
+        transactionId: data.transaction_id,
+        orderId: data.order_id,
+        paymentMethod: data.payment_method,
+        amount: data.amount / 100, // Convert from cents
+        currency: data.currency,
+        status: data.status,
+        error: data.status === 'failed' ? {
+          code: data.error_code || 'PAYMENT_FAILED',
+          message: data.error_message || 'Payment failed'
+        } : undefined
+      };
+    } catch (error) {
+      console.error('Speed payment status check error:', error);
+      return {
+        success: false,
+        error: {
+          code: 'STATUS_CHECK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to check payment status'
+        }
+      };
+    }
+  }
+
+  // Process direct checkout (without QR code)
+  async processCheckout(checkoutData: SpeedCheckoutData): Promise<SpeedCheckoutResponse> {
+    try {
+      const qrData = await this.createPaymentSession(checkoutData);
       
-      const errorResponse: SpeedCheckoutResponse = {
+      // For direct checkout, we'll return the payment URL
+      return {
+        success: true,
+        orderId: qrData.orderId,
+        amount: qrData.amount,
+        currency: qrData.currency,
+        status: 'pending',
+        paymentUrl: qrData.paymentUrl,
+        qrCode: qrData.qrCode
+      };
+    } catch (error) {
+      console.error('Speed checkout error:', error);
+      return {
         success: false,
         error: {
           code: 'CHECKOUT_ERROR',
-          message: error instanceof Error ? error.message : 'Unknown checkout error'
+          message: error instanceof Error ? error.message : 'Checkout failed'
         }
       };
-
-      this.trackCheckoutEvent('error', checkoutData, errorResponse);
-      return errorResponse;
     }
   }
 
@@ -194,48 +253,28 @@ class SpeedCheckoutService {
     );
 
     if (Math.abs(calculatedTotal - data.amount) > 0.01) {
-      throw new Error('Total amount does not match item prices');
+      throw new Error(`Total amount mismatch: expected ${calculatedTotal}, got ${data.amount}`);
     }
   }
 
-  // Track checkout events for analytics
-  private trackCheckoutEvent(
-    event: 'success' | 'failed' | 'error',
-    checkoutData: SpeedCheckoutData,
-    response: SpeedCheckoutResponse
-  ): void {
-    try {
-      // Custom event for analytics
-      const analyticsEvent = new CustomEvent('speedCheckoutEvent', {
-        detail: {
-          event,
-          amount: checkoutData.amount,
-          currency: checkoutData.currency,
-          itemCount: checkoutData.items.length,
-          transactionId: response.transactionId,
-          orderId: response.orderId,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      window.dispatchEvent(analyticsEvent);
-    } catch (error) {
-      console.warn('Failed to track checkout event:', error);
-    }
-  }
-
-  // Get checkout configuration
+  // Get configuration
   getConfig() {
-    return window.speedConfig;
+    return {
+      apiKey: this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'Not set',
+      storeId: this.storeId ? `${this.storeId.substring(0, 8)}...` : 'Not set',
+      apiUrl: this.apiUrl,
+      configured: this.isConfigured()
+    };
   }
 
-  // Check SDK status
+  // Get status
   getStatus() {
     return {
-      sdkLoaded: !!window.Speed,
-      configLoaded: !!window.speedConfig,
+      configured: this.isConfigured(),
       initialized: this.isInitialized,
-      available: this.isAvailable()
+      apiKey: !!this.apiKey,
+      storeId: !!this.storeId,
+      apiUrl: !!this.apiUrl
     };
   }
 }
